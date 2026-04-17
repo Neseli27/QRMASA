@@ -7,6 +7,9 @@ import DashboardPage from './pages/DashboardPage';
 import MenuPage from './pages/MenuPage';
 import TablesPage from './pages/TablesPage';
 import StaffPage from './pages/StaffPage';
+import OrdersPage from './pages/OrdersPage';
+import BrandingPage from './pages/BrandingPage';
+import SettingsPage from './pages/SettingsPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
 
 /**
@@ -66,21 +69,9 @@ export default function VenueAdminApp() {
           <Route path="menu" element={<MenuPage />} />
           <Route path="masalar" element={<TablesPage />} />
           <Route path="personel" element={<StaffPage />} />
-          <Route
-            path="siparisler"
-            element={
-              <ComingSoonPage
-                title="Siparişler"
-                description="Canlı sipariş ekranı"
-                features={[
-                  'Gerçek zamanlı sipariş listesi',
-                  'Durum güncelleme (Alındı → Hazırlanıyor → Hazır → Servis)',
-                  'Sesli uyarı',
-                  'Masa bazlı gruplama'
-                ]}
-              />
-            }
-          />
+          <Route path="siparisler" element={<OrdersPage />} />
+          <Route path="branding" element={<BrandingPage />} />
+          <Route path="ayarlar" element={<SettingsPage />} />
           <Route
             path="sadakat"
             element={
@@ -94,39 +85,6 @@ export default function VenueAdminApp() {
                   'Seviye sistemi (Bronz/Gümüş/Altın)',
                   'Kampanya yönetimi',
                   'Push bildirim'
-                ]}
-              />
-            }
-          />
-          <Route
-            path="branding"
-            element={
-              <ComingSoonPage
-                title="Marka Ayarları"
-                description="Logo, renkler, PWA ikonu"
-                features={[
-                  'Logo yükleme',
-                  'Favicon',
-                  'PWA ikonu (192x192, 512x512)',
-                  'Primary / Accent renkler',
-                  'Hoş geldin metni',
-                  'Önizleme paneli'
-                ]}
-              />
-            }
-          />
-          <Route
-            path="ayarlar"
-            element={
-              <ComingSoonPage
-                title="Ayarlar"
-                description="Özellik anahtarları ve işletme bilgileri"
-                features={[
-                  'Feature toggle: çoklu kullanıcı masa',
-                  'Feature toggle: garson çağırma',
-                  'Feature toggle: ürün notları',
-                  'Müşteri kayıt modu (anonim / zorunlu)',
-                  'Sadakat modları'
                 ]}
               />
             }
