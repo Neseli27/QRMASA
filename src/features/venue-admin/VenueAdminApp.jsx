@@ -5,6 +5,8 @@ import { LoadingScreen, ErrorScreen } from '../../components/ui/StateScreens';
 import { VenueAdminLayout } from './components/VenueAdminLayout';
 import DashboardPage from './pages/DashboardPage';
 import MenuPage from './pages/MenuPage';
+import TablesPage from './pages/TablesPage';
+import StaffPage from './pages/StaffPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
 
 /**
@@ -62,21 +64,8 @@ export default function VenueAdminApp() {
         <Routes>
           <Route index element={<DashboardPage />} />
           <Route path="menu" element={<MenuPage />} />
-          <Route
-            path="masalar"
-            element={
-              <ComingSoonPage
-                title="Masa Yönetimi"
-                description="Masa ve QR kodları"
-                features={[
-                  'Masa ekle (isim, kapasite, bölge)',
-                  'Her masa için QR kod üretme',
-                  'Toplu QR yazdırma (PDF)',
-                  'QR pasif etme / yenileme'
-                ]}
-              />
-            }
-          />
+          <Route path="masalar" element={<TablesPage />} />
+          <Route path="personel" element={<StaffPage />} />
           <Route
             path="siparisler"
             element={
@@ -105,20 +94,6 @@ export default function VenueAdminApp() {
                   'Seviye sistemi (Bronz/Gümüş/Altın)',
                   'Kampanya yönetimi',
                   'Push bildirim'
-                ]}
-              />
-            }
-          />
-          <Route
-            path="personel"
-            element={
-              <ComingSoonPage
-                title="Personel"
-                description="Garson ve çalışan yönetimi"
-                features={[
-                  'Garson ekle (email ile davet)',
-                  'Rol atama',
-                  'Aktif / pasif durumu'
                 ]}
               />
             }
