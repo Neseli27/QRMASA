@@ -4,12 +4,13 @@ import {
   collection, onSnapshot, orderBy, query, doc, setDoc, deleteDoc,
   serverTimestamp, writeBatch
 } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import {
   Building2, Plus, Search, Pause, Play, Trash2, Settings,
   ExternalLink, MoreVertical, Crown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { db } from '../../../lib/firebase';
+import { db, functions } from '../../../lib/firebase';
 import { collections } from '../../../lib/paths';
 import { slugify, shortId, relativeTime } from '../../../lib/utils';
 import { Button } from '../../../components/ui/Button';
@@ -325,141 +326,251 @@ function VenueRow({ venue, onTogglePublish, onToggleSuspend, onDelete }) {
 }
 
 // ═══════════════════════════════════════════════════
-// Yeni Mekan Modal
+// Yeni Mekan Modal — Cloud Function ile otomatik kullanıcı oluşturur
 // ═══════════════════════════════════════════════════
 function NewVenueModal({ open, onClose }) {
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [ownerEmail, setOwnerEmail] = useState('');
-  const [welcomeText, setWelcomeText] = useState('');
-  const [plan, setPlan] = useState('free');
+  const [form, setForm] = useState({
+    name: '',
+    slug: '',
+    ownerEmail: '',
+    ownerPassword: '',
+    ownerDisplayName: '',
+    welcomeText: '',
+    description: '',
+    plan: 'free'
+  });
   const [saving, setSaving] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState(null);
 
   const reset = () => {
-    setName(''); setSlug(''); setOwnerEmail(''); setWelcomeText(''); setPlan('free');
+    setForm({
+      name: '', slug: '', ownerEmail: '', ownerPassword: '',
+      ownerDisplayName: '', welcomeText: '', description: '', plan: 'free'
+    });
+    setCreatedCredentials(null);
   };
 
   const handleNameChange = (v) => {
-    setName(v);
-    setSlug(slugify(v));
+    setForm({ ...form, name: v, slug: slugify(v) });
+  };
+
+  // Otomatik güçlü şifre üretir
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let pass = '';
+    for (let i = 0; i < 10; i++) {
+      pass += chars[Math.floor(Math.random() * chars.length)];
+    }
+    setForm({ ...form, ownerPassword: pass });
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !slug.trim()) {
-      toast.error('Mekan adı ve slug gerekli');
-      return;
+    // Validasyon
+    if (!form.name.trim()) return toast.error('Mekan adı gerekli');
+    if (!form.slug.trim()) return toast.error('Slug gerekli');
+    if (!form.ownerEmail.trim()) return toast.error('Sahibin e-postası gerekli');
+    if (!form.ownerPassword || form.ownerPassword.length < 6) {
+      return toast.error('Şifre en az 6 karakter olmalı');
     }
 
     setSaving(true);
     try {
-      const venueId = `v_${shortId(10).toLowerCase()}`;
-
-      await setDoc(doc(db, collections.venues, venueId), {
-        branding: {
-          name: name.trim(),
-          welcomeText: welcomeText.trim() || null,
-          primaryColor: '#f97316',
-          softColor: '#fff7ed',
-          accentColor: '#eab308'
-        },
-        slug: slug.trim(),
-        ownerEmail: ownerEmail.trim() || null,
-        published: false,
-        suspended: false,
-        plan,
-        features: {
-          multiUserTable: true,
-          separateOrders: false,
-          callWaiter: true,
-          productNotes: true,
-          tipping: false,
-          customerRegister: 'optional',
-          loyalty: { enabled: false }
-        },
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+      const createVenue = httpsCallable(functions, 'createVenueWithOwner');
+      const result = await createVenue({
+        name: form.name,
+        slug: form.slug,
+        ownerEmail: form.ownerEmail,
+        ownerPassword: form.ownerPassword,
+        ownerDisplayName: form.ownerDisplayName,
+        welcomeText: form.welcomeText,
+        description: form.description,
+        plan: form.plan
       });
 
-      await setDoc(doc(db, collections.slugIndex, slug.trim()), {
-        venueId,
-        createdAt: serverTimestamp()
-      });
-
-      toast.success('Mekan oluşturuldu. İşletme yöneticisini "Yönet" sayfasından ata.');
-      onClose();
-      reset();
+      const { credentials, isNewUser } = result.data;
+      setCreatedCredentials({ ...credentials, isNewUser });
+      toast.success('Mekan ve işletme hesabı oluşturuldu');
     } catch (e) {
       console.error(e);
-      toast.error('Oluşturulamadı: ' + e.message);
+      toast.error('Oluşturulamadı: ' + (e.message || 'Bilinmeyen hata'));
     } finally {
       setSaving(false);
     }
   };
 
+  const handleCopyCredentials = () => {
+    const text = `İşletme Giriş Bilgileri\n──────────────────────\nE-posta: ${createdCredentials.email}\nŞifre: ${createdCredentials.password}\n\nGiriş adresi: ${window.location.origin}/giris`;
+    navigator.clipboard.writeText(text);
+    toast.success('Panoya kopyalandı');
+  };
+
+  const handleClose = () => {
+    onClose();
+    reset();
+  };
+
   return (
     <Modal
       open={open}
-      onClose={() => { onClose(); reset(); }}
-      title="Yeni Mekan Oluştur"
+      onClose={handleClose}
+      title={createdCredentials ? '✅ Mekan Oluşturuldu' : 'Yeni Mekan Oluştur'}
+      size="md"
       footer={
-        <>
-          <button
-            onClick={() => { onClose(); reset(); }}
-            disabled={saving}
-            className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-          >
-            İptal
-          </button>
-          <Button onClick={handleSave} loading={saving} className="bg-gradient-to-r from-orange-500 to-red-600">
-            Oluştur
+        createdCredentials ? (
+          <Button onClick={handleClose} className="bg-gradient-to-r from-orange-500 to-red-600">
+            Tamam
           </Button>
-        </>
+        ) : (
+          <>
+            <button
+              onClick={handleClose}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+            >
+              İptal
+            </button>
+            <Button
+              onClick={handleSave}
+              loading={saving}
+              className="bg-gradient-to-r from-orange-500 to-red-600"
+            >
+              Mekanı Oluştur
+            </Button>
+          </>
+        )
       }
     >
-      <div className="space-y-4">
-        <Input
-          label="Mekan Adı *"
-          value={name}
-          onChange={(e) => handleNameChange(e.target.value)}
-          placeholder="Örn: Antep Kebap Evi"
-          autoFocus
-        />
-        <Input
-          label="URL Slug *"
-          value={slug}
-          onChange={(e) => setSlug(slugify(e.target.value))}
-          placeholder="antep-kebap-evi"
-          hint="Müşteri URL'si: qrmasa.com/m/[slug]"
-        />
-        <Input
-          label="İşletme Sahibinin E-postası"
-          type="email"
-          value={ownerEmail}
-          onChange={(e) => setOwnerEmail(e.target.value)}
-          placeholder="ornek@mail.com"
-          hint="Mekan oluşturulduktan sonra 'Yönet' sayfasından bu kullanıcıya venue_admin rolü atayabilirsin"
-        />
-        <Textarea
-          label="Karşılama Metni"
-          value={welcomeText}
-          onChange={(e) => setWelcomeText(e.target.value)}
-          placeholder="Mekanımıza hoş geldiniz..."
-          rows={2}
-        />
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Plan</label>
-          <select
-            value={plan}
-            onChange={(e) => setPlan(e.target.value)}
-            className="input-field"
+      {createdCredentials ? (
+        // ─── Başarı ekranı: credential'ları göster ───
+        <div className="space-y-4">
+          <div className="text-sm text-slate-600">
+            {createdCredentials.isNewUser
+              ? 'İşletmeci için yeni bir hesap oluşturuldu. Aşağıdaki giriş bilgilerini işletme sahibine ilet.'
+              : 'Bu e-posta ile kayıtlı kullanıcı vardı. Şifresi güncellendi ve mekan yöneticisi olarak atandı.'}
+          </div>
+
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-200 rounded-2xl p-4 space-y-3">
+            <div>
+              <div className="text-xs font-bold text-orange-800 uppercase tracking-wide mb-1">E-posta</div>
+              <div className="font-mono text-sm text-slate-900 bg-white rounded-lg px-3 py-2 border border-orange-200 select-all">
+                {createdCredentials.email}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-bold text-orange-800 uppercase tracking-wide mb-1">Şifre</div>
+              <div className="font-mono text-sm text-slate-900 bg-white rounded-lg px-3 py-2 border border-orange-200 select-all">
+                {createdCredentials.password}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleCopyCredentials}
+            className="w-full py-3 rounded-xl bg-slate-900 text-white font-semibold hover:bg-slate-800 transition-colors"
           >
-            <option value="free">Ücretsiz (Deneme)</option>
-            <option value="basic">Temel (Aylık)</option>
-            <option value="pro">Pro (Aylık)</option>
-            <option value="annual">Yıllık</option>
-          </select>
+            📋 Giriş Bilgilerini Panoya Kopyala
+          </button>
+
+          <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
+            💡 İşletmeci, <strong>{window.location.origin}/giris</strong> adresinden
+            bu e-posta ve şifre ile giriş yapabilir. İlk girişten sonra şifresini değiştirebilir.
+          </div>
         </div>
-      </div>
+      ) : (
+        // ─── Form ekranı ───
+        <div className="space-y-4">
+          <div className="text-xs text-slate-500 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            Bu mekan için otomatik olarak bir işletme yöneticisi hesabı oluşturulacak. Giriş bilgileri sonraki ekranda gösterilecek.
+          </div>
+
+          <Input
+            label="Mekan Adı *"
+            value={form.name}
+            onChange={(e) => handleNameChange(e.target.value)}
+            placeholder="Örn: Antep Kebap Evi"
+            autoFocus
+          />
+          <Input
+            label="URL Slug *"
+            value={form.slug}
+            onChange={(e) => setForm({ ...form, slug: slugify(e.target.value) })}
+            placeholder="antep-kebap-evi"
+            hint={`Müşteri URL: ${window.location.origin}/m/${form.slug || 'slug'}`}
+          />
+
+          <div className="border-t border-slate-200 pt-4">
+            <h4 className="text-sm font-bold text-slate-700 mb-3">İşletmeci Bilgileri</h4>
+            <div className="space-y-3">
+              <Input
+                label="İşletmeci Adı (opsiyonel)"
+                value={form.ownerDisplayName}
+                onChange={(e) => setForm({ ...form, ownerDisplayName: e.target.value })}
+                placeholder="Ahmet Usta"
+              />
+              <Input
+                label="E-posta *"
+                type="email"
+                value={form.ownerEmail}
+                onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })}
+                placeholder="ahmet@kebap.com"
+                hint="İşletmeci bu e-posta ile giriş yapacak"
+              />
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Şifre *</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={form.ownerPassword}
+                    onChange={(e) => setForm({ ...form, ownerPassword: e.target.value })}
+                    placeholder="En az 6 karakter"
+                    className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={generatePassword}
+                    className="px-3 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold whitespace-nowrap"
+                  >
+                    Otomatik
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Bu şifre işletmeciye iletilecek</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-4">
+            <h4 className="text-sm font-bold text-slate-700 mb-3">Ek Bilgiler (Opsiyonel)</h4>
+            <div className="space-y-3">
+              <Input
+                label="Kısa Tanıtım"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Gaziantep'in en güzel kebabı"
+              />
+              <Textarea
+                label="Karşılama Metni"
+                value={form.welcomeText}
+                onChange={(e) => setForm({ ...form, welcomeText: e.target.value })}
+                placeholder="Mekanımıza hoş geldiniz..."
+                rows={2}
+              />
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Plan</label>
+                <select
+                  value={form.plan}
+                  onChange={(e) => setForm({ ...form, plan: e.target.value })}
+                  className="input-field"
+                >
+                  <option value="free">Ücretsiz (Deneme)</option>
+                  <option value="basic">Temel (Aylık)</option>
+                  <option value="pro">Pro (Aylık)</option>
+                  <option value="annual">Yıllık</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

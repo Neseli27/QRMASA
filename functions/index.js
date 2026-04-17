@@ -177,6 +177,122 @@ export const joinTableSession = onCall({ region: REGION }, async (request) => {
 });
 
 // ============================================================
+// ============================================================
+// createVenueWithOwner — Süper admin mekan oluşturur ve sahibine
+// e-posta/şifre ile venue_admin hesabı atar
+// ============================================================
+export const createVenueWithOwner = onCall({ region: REGION }, async (request) => {
+  await requireRole(request, 'superadmin');
+  const {
+    name, slug, ownerEmail, ownerPassword,
+    ownerDisplayName, welcomeText, description, plan
+  } = request.data || {};
+
+  // Validasyon
+  if (!name?.trim()) throw new HttpsError('invalid-argument', 'Mekan adı gerekli');
+  if (!slug?.trim()) throw new HttpsError('invalid-argument', 'Slug gerekli');
+  if (!ownerEmail?.trim()) throw new HttpsError('invalid-argument', 'Sahibin e-postası gerekli');
+  if (!ownerPassword || ownerPassword.length < 6) {
+    throw new HttpsError('invalid-argument', 'Şifre en az 6 karakter olmalı');
+  }
+
+  // Slug zaten var mı?
+  const slugDoc = await db.doc(`slug_index/${slug.trim()}`).get();
+  if (slugDoc.exists) {
+    throw new HttpsError('already-exists', 'Bu slug zaten kullanımda');
+  }
+
+  // 1. Auth kullanıcısı oluştur veya mevcut kullanıcıyı bul
+  let ownerUid;
+  let isNewUser = false;
+  try {
+    const existing = await auth.getUserByEmail(ownerEmail.trim().toLowerCase()).catch(() => null);
+    if (existing) {
+      // Mevcut kullanıcı: şifreyi güncelle
+      ownerUid = existing.uid;
+      await auth.updateUser(ownerUid, { password: ownerPassword });
+    } else {
+      // Yeni kullanıcı oluştur
+      const newUser = await auth.createUser({
+        email: ownerEmail.trim().toLowerCase(),
+        password: ownerPassword,
+        displayName: ownerDisplayName || name.trim(),
+        emailVerified: false
+      });
+      ownerUid = newUser.uid;
+      isNewUser = true;
+    }
+  } catch (e) {
+    console.error('[createVenueWithOwner] auth:', e);
+    throw new HttpsError('internal', 'Kullanıcı oluşturulamadı: ' + e.message);
+  }
+
+  // 2. Venue ID üret
+  const venueId = 'v_' + crypto.randomBytes(6).toString('hex');
+
+  // 3. Venue dokümanı
+  const venueData = {
+    branding: {
+      name: name.trim(),
+      welcomeText: welcomeText?.trim() || null,
+      description: description?.trim() || null,
+      primaryColor: '#f97316',
+      softColor: '#fff7ed',
+      accentColor: '#eab308'
+    },
+    slug: slug.trim(),
+    ownerEmail: ownerEmail.trim().toLowerCase(),
+    ownerUid,
+    published: false,
+    suspended: false,
+    plan: plan || 'free',
+    features: {
+      multiUserTable: true,
+      separateOrders: false,
+      callWaiter: true,
+      productNotes: true,
+      tipping: false,
+      customerRegister: 'anonymous',
+      loyalty: { enabled: false }
+    },
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp()
+  };
+
+  // 4. Batch: venue + slug_index + user role
+  const batch = db.batch();
+  batch.set(db.doc(`venues/${venueId}`), venueData);
+  batch.set(db.doc(`slug_index/${slug.trim()}`), {
+    venueId,
+    createdAt: FieldValue.serverTimestamp()
+  });
+  batch.set(db.doc(`users/${ownerUid}`), {
+    role: 'venue_admin',
+    venueId,
+    email: ownerEmail.trim().toLowerCase(),
+    displayName: ownerDisplayName || name.trim(),
+    updatedAt: FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  await batch.commit();
+
+  // 5. Custom claims
+  await auth.setCustomUserClaims(ownerUid, { role: 'venue_admin', venueId });
+
+  return {
+    success: true,
+    venueId,
+    ownerUid,
+    isNewUser,
+    credentials: {
+      email: ownerEmail.trim().toLowerCase(),
+      password: ownerPassword
+    }
+  };
+});
+
+// ============================================================
 // assignUserRole — Süper admin rol atar
 // ============================================================
 export const assignUserRole = onCall({ region: REGION }, async (request) => {
