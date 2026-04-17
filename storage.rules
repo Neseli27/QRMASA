@@ -1,0 +1,74 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════
+// QRMasa Storage Security Rules
+// ───────────────────────────────────────────────────────────────
+// Proje: qrmasa-74c03
+// Yapı: /venues/{venueId}/...
+// - branding/ : logo, favicon, PWA icon (2 MB)
+// - menu/{itemId}/ : ürün görselleri (3 MB)
+// - categories/{catId}/ : kategori görselleri (1 MB)
+// - campaigns/{id}/ : kampanya görselleri (2 MB)
+// ═══════════════════════════════════════════════════════════════
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ─── Yardımcı Fonksiyonlar ───────────────────────
+    function isSignedIn() { return request.auth != null; }
+    function userRole() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function userVenue() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.venueId;
+    }
+    function isSuperAdmin() { return isSignedIn() && userRole() == 'superadmin'; }
+    function isVenueAdmin(vid) {
+      return isSignedIn() && userRole() == 'venue_admin' && userVenue() == vid;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp|gif|svg\\+xml)');
+    }
+    function maxSize(mb) {
+      return request.resource.size < mb * 1024 * 1024;
+    }
+
+    // ─── Venue Branding (logo, favicon, PWA icons) ──
+    match /venues/{venueId}/branding/{fileName} {
+      allow read: if true;
+      allow write: if (isVenueAdmin(venueId) || isSuperAdmin())
+        && isImage() && maxSize(2);
+      allow delete: if isVenueAdmin(venueId) || isSuperAdmin();
+    }
+
+    // ─── Menü ürün görselleri ────────────────────────
+    match /venues/{venueId}/menu/{itemId}/{fileName} {
+      allow read: if true;
+      allow write: if (isVenueAdmin(venueId) || isSuperAdmin())
+        && isImage() && maxSize(3);
+      allow delete: if isVenueAdmin(venueId) || isSuperAdmin();
+    }
+
+    // ─── Kategori görselleri ─────────────────────────
+    match /venues/{venueId}/categories/{catId}/{fileName} {
+      allow read: if true;
+      allow write: if (isVenueAdmin(venueId) || isSuperAdmin())
+        && isImage() && maxSize(1);
+      allow delete: if isVenueAdmin(venueId) || isSuperAdmin();
+    }
+
+    // ─── Kampanya görselleri ─────────────────────────
+    match /venues/{venueId}/campaigns/{campaignId}/{fileName} {
+      allow read: if true;
+      allow write: if (isVenueAdmin(venueId) || isSuperAdmin())
+        && isImage() && maxSize(2);
+      allow delete: if isVenueAdmin(venueId) || isSuperAdmin();
+    }
+
+    // ─── Catch-all deny ──────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

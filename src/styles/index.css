@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   QRMasa Global Styles
+   Dinamik tema: Venue branding Firestore'dan yüklenir, CSS değişkenleri runtime'da güncellenir.
+   Varsayılanlar aşağıda, VenueContext bunları override eder.
+   ============================================================ */
+
+:root {
+  /* Brand renkleri - RGB triplet olarak, Tailwind rgb() ile çalışsın */
+  --brand-rgb: 15 23 42;          /* slate-900 default */
+  --brand-soft-rgb: 241 245 249;  /* slate-100 */
+  --brand-accent-rgb: 234 179 8;  /* yellow-500 */
+
+  /* Tipografi */
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+
+  /* Safe area (iPhone notch vs) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html, body {
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+body {
+  @apply bg-white text-slate-900;
+}
+
+/* Scrollbar - webkit */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { @apply bg-slate-50; }
+::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+
+/* Focus ring - erişilebilirlik */
+*:focus-visible {
+  outline: 2px solid rgb(var(--brand-rgb));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Yardımcı sınıflar */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold text-white transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+    background-color: rgb(var(--brand-rgb));
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: rgb(var(--brand-rgb) / 0.9);
+    box-shadow: 0 10px 25px -5px rgb(var(--brand-rgb) / 0.3);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold transition-all duration-200 active:scale-95 border;
+    color: rgb(var(--brand-rgb));
+    border-color: rgb(var(--brand-rgb) / 0.2);
+    background-color: rgb(var(--brand-soft-rgb));
+  }
+
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-slate-200/60;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-slate-400 focus:ring-2 focus:ring-slate-200 transition-all outline-none text-slate-900 placeholder:text-slate-400;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium;
+  }
+}
+
+/* PWA - install prompt üzerinde standalone'da görünüm */
+@media all and (display-mode: standalone) {
+  body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
+}

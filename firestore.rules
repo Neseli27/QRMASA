@@ -1,0 +1,182 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════
+// QRMasa Firestore Security Rules
+// ───────────────────────────────────────────────────────────────
+// Proje: qrmasa-74c03 (bu projeye özel, başka uygulama paylaşmıyor)
+//
+// Roller: superadmin | venue_admin | waiter | customer (anonim)
+// Multi-tenant: /venues/{venueId}/... altındaki veriler o mekana ait.
+// Rol bilgisi /users/{uid} dokümanında, istemci değiştiremez (sadece Cloud Functions yazabilir).
+// ═══════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Yardımcı Fonksiyonlar ───────────────────────
+    function isSignedIn() { return request.auth != null; }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function userRole() {
+      return isSignedIn() ? userDoc().role : null;
+    }
+    function userVenue() {
+      return isSignedIn() ? userDoc().venueId : null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && userRole() == 'superadmin';
+    }
+    function isVenueAdmin(vid) {
+      return isSignedIn() && userRole() == 'venue_admin' && userVenue() == vid;
+    }
+    function isWaiter(vid) {
+      return isSignedIn() && userRole() == 'waiter' && userVenue() == vid;
+    }
+    function isVenueStaff(vid) {
+      return isVenueAdmin(vid) || isWaiter(vid);
+    }
+
+    function isString(field, maxLen) {
+      return field is string && field.size() <= maxLen;
+    }
+    function isPosNumber(field) {
+      return field is number && field >= 0;
+    }
+
+    // ─── /users/{uid} ─ Kullanıcı rol profili ─────────
+    // Rol ve venueId alanları istemciden DEĞİŞTİRİLEMEZ.
+    // Cloud Functions (admin SDK) bu alanları yazar.
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isSuperAdmin());
+      allow create: if false;
+      allow update: if isSignedIn() && request.auth.uid == uid
+        && !('role' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('venueId' in request.resource.data.diff(resource.data).affectedKeys());
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── /slug_index/{slug} ─ Hızlı slug → venueId ────
+    match /slug_index/{slug} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // ─── /superadmin/{docId} ─ Global config ──────────
+    match /superadmin/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // ─── /venues/{venueId} ─ İşletme ──────────────────
+    match /venues/{venueId} {
+      // Müşteri sadece yayında olan (published: true) mekanları görebilir.
+      allow read: if resource.data.published == true
+        || isVenueStaff(venueId) || isSuperAdmin();
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin()
+        || (isVenueAdmin(venueId)
+          && !('plan' in request.resource.data.diff(resource.data).affectedKeys())
+          && !('published' in request.resource.data.diff(resource.data).affectedKeys()));
+      allow delete: if isSuperAdmin();
+
+      // ─── Kategoriler ──────────────────────────────
+      match /categories/{catId} {
+        allow read: if true;
+        allow write: if isVenueAdmin(venueId) || isSuperAdmin();
+      }
+
+      // ─── Menü ürünleri ────────────────────────────
+      match /menu_items/{itemId} {
+        allow read: if true;
+        allow create, update: if (isVenueAdmin(venueId) || isSuperAdmin())
+          && isString(request.resource.data.name, 120)
+          && isPosNumber(request.resource.data.price)
+          && request.resource.data.price <= 100000;
+        allow delete: if isVenueAdmin(venueId) || isSuperAdmin();
+      }
+
+      // ─── Masalar ──────────────────────────────────
+      match /tables/{tableId} {
+        allow read: if true;
+        allow write: if isVenueAdmin(venueId) || isSuperAdmin();
+      }
+
+      // ─── Personel ─────────────────────────────────
+      match /staff/{staffId} {
+        allow read: if isVenueAdmin(venueId) || isSuperAdmin();
+        allow write: if isVenueAdmin(venueId) || isSuperAdmin();
+      }
+
+      // ─── Oturumlar (QR masa oturumu) ──────────────
+      // Sadece Cloud Functions oluşturur ve günceller.
+      match /sessions/{sessionId} {
+        allow read: if isSignedIn();
+        allow create: if false;
+        allow update: if false;
+        allow delete: if isVenueStaff(venueId) || isSuperAdmin();
+      }
+
+      // ─── Siparişler ───────────────────────────────
+      match /orders/{orderId} {
+        allow read: if isVenueStaff(venueId) || isSuperAdmin()
+          || (isSignedIn() && resource.data.customerUid == request.auth.uid);
+
+        allow create: if isSignedIn()
+          && request.resource.data.venueId == venueId
+          && request.resource.data.customerUid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.items is list
+          && request.resource.data.items.size() > 0
+          && request.resource.data.items.size() <= 50
+          && isPosNumber(request.resource.data.total)
+          && request.resource.data.total <= 50000
+          && isString(request.resource.data.sessionId, 64)
+          && isString(request.resource.data.tableId, 64)
+          && request.resource.data.createdAt == request.time;
+
+        allow update: if isVenueStaff(venueId) || isSuperAdmin();
+        allow delete: if isSuperAdmin();
+      }
+
+      // ─── Müşteri (sadakat profili) ────────────────
+      // points ve totalSpent alanları Cloud Functions tarafından yazılır.
+      match /customers/{customerId} {
+        allow read: if isVenueStaff(venueId) || isSuperAdmin()
+          || (isSignedIn() && customerId == request.auth.uid);
+        allow create: if isSignedIn() && customerId == request.auth.uid;
+        allow update: if isVenueStaff(venueId) || isSuperAdmin()
+          || (isSignedIn() && customerId == request.auth.uid
+            && !('points' in request.resource.data.diff(resource.data).affectedKeys())
+            && !('totalSpent' in request.resource.data.diff(resource.data).affectedKeys()));
+        allow delete: if isSuperAdmin();
+      }
+
+      // ─── Sadakat işlemleri ────────────────────────
+      match /loyalty_transactions/{txId} {
+        allow read: if isVenueStaff(venueId) || isSuperAdmin()
+          || (isSignedIn() && resource.data.customerUid == request.auth.uid);
+        allow write: if false;
+      }
+
+      // ─── Kampanyalar ──────────────────────────────
+      match /campaigns/{campaignId} {
+        allow read: if true;
+        allow write: if isVenueAdmin(venueId) || isSuperAdmin();
+      }
+
+      // ─── Bildirimler ──────────────────────────────
+      match /notifications/{notifId} {
+        allow read: if isVenueStaff(venueId) || isSuperAdmin();
+        allow create: if isVenueAdmin(venueId) || isSuperAdmin();
+        allow update, delete: if isSuperAdmin();
+      }
+    }
+
+    // ─── Catch-all deny ───────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

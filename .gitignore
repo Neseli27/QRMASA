@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+functions/node_modules/
+
+# Build
+dist/
+build/
+functions/lib/
+
+# Env
+.env
+.env.local
+.env.production
+.env.development
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+database-debug.log
+*.log
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel
+
+# Test coverage
+coverage/
+
+# Temporary
+*.tmp
+*.temp
+.cache/
