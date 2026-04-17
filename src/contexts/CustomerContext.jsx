@@ -1,22 +1,28 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { signInAnonymously } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
-import { auth, functions } from '../lib/firebase';
+import { addDoc, collection, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
+import { auth, functions, db } from '../lib/firebase';
+import { venueCol } from '../lib/paths';
+import { checkClientRateLimit, sanitizeText, validateQuantity } from '../lib/security';
 
 const CustomerContext = createContext(null);
+
+// Aktif sipariş ID'si localStorage anahtarı
+const activeOrderStorageKey = (venueId, tableId) => `qrmasa_active_order_${venueId}_${tableId}`;
 
 /**
  * CustomerProvider
  * ----------------
  * Müşteri deneyimi için ana context:
- * - Anonim auth + masa oturumu (joinTableSession)
+ * - Anonim auth + masa oturumu (openTableSession)
  * - Sepet yönetimi (localStorage'da saklar)
- * - Aktif sipariş takibi
+ * - Sipariş oluşturma ve aktif sipariş takibi
  *
  * Kullanım: <CustomerProvider venueId={..} tableId={..} token={..}>
  */
 export function CustomerProvider({ venueId, tableId, token, children }) {
-  const [session, setSession] = useState(null); // { sessionId, tableId }
+  const [session, setSession] = useState(null); // { sessionId, tableId, expiresAt, reused }
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState(null);
 
@@ -29,6 +35,19 @@ export function CustomerProvider({ venueId, tableId, token, children }) {
     } catch { return []; }
   });
 
+  // Aktif sipariş ID'si (localStorage'da persist)
+  const [activeOrderId, setActiveOrderId] = useState(() => {
+    try {
+      return localStorage.getItem(activeOrderStorageKey(venueId, tableId)) || null;
+    } catch { return null; }
+  });
+
+  // Aktif sipariş verisi (realtime)
+  const [activeOrder, setActiveOrder] = useState(null);
+
+  // Sipariş gönderme state
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+
   // Sepeti localStorage'a kaydet
   useEffect(() => {
     try {
@@ -38,9 +57,23 @@ export function CustomerProvider({ venueId, tableId, token, children }) {
     }
   }, [cart, storageKey]);
 
-  // Anonim auth + masa oturumu aç
+  // Aktif sipariş ID'sini localStorage'a kaydet
   useEffect(() => {
-    if (!venueId || !tableId || !token) {
+    try {
+      const key = activeOrderStorageKey(venueId, tableId);
+      if (activeOrderId) {
+        localStorage.setItem(key, activeOrderId);
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch (e) {
+      console.warn('[ActiveOrder] localStorage:', e);
+    }
+  }, [activeOrderId, venueId, tableId]);
+
+  // Anonim auth + masa oturumu aç (veya aktif olana katıl)
+  useEffect(() => {
+    if (!token) {
       setSessionLoading(false);
       setSessionError('Geçersiz QR kodu');
       return;
@@ -53,10 +86,12 @@ export function CustomerProvider({ venueId, tableId, token, children }) {
           await signInAnonymously(auth);
         }
 
-        // 2. Masa oturumu aç/katıl (Cloud Function ile token doğrulanır)
-        const joinSession = httpsCallable(functions, 'joinTableSession');
-        const result = await joinSession({ venueId, tableId, token });
-        setSession(result.data); // { sessionId }
+        // 2. Oturum aç veya mevcut aktife katıl (token server'da doğrulanır)
+        const openSession = httpsCallable(functions, 'openTableSession');
+        const result = await openSession({ token });
+
+        // result.data: { sessionId, venueId, tableId, expiresAt, reused }
+        setSession(result.data);
         setSessionError(null);
       } catch (e) {
         console.error('[Session]', e);
@@ -66,7 +101,31 @@ export function CustomerProvider({ venueId, tableId, token, children }) {
         setSessionLoading(false);
       }
     })();
-  }, [venueId, tableId, token]);
+  }, [token]);
+
+  // Aktif siparişi realtime dinle
+  useEffect(() => {
+    if (!venueId || !activeOrderId) {
+      setActiveOrder(null);
+      return;
+    }
+    const ref = doc(db, venueCol(venueId, 'orders'), activeOrderId);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) {
+          setActiveOrder(null);
+          setActiveOrderId(null);
+          return;
+        }
+        setActiveOrder({ id: snap.id, ...snap.data() });
+      },
+      (err) => {
+        console.warn('[ActiveOrder] realtime:', err);
+      }
+    );
+    return () => unsub();
+  }, [venueId, activeOrderId]);
 
   // ─── Sepet aksiyonları ──────────────────────────────
   const addToCart = useCallback((item, qty = 1, note = '') => {
@@ -98,6 +157,10 @@ export function CustomerProvider({ venueId, tableId, token, children }) {
     });
   }, []);
 
+  const removeFromCart = useCallback((index) => {
+    setCart(current => current.filter((_, i) => i !== index));
+  }, []);
+
   const updateQty = useCallback((index, newQty) => {
     if (newQty <= 0) {
       removeFromCart(index);
@@ -108,11 +171,7 @@ export function CustomerProvider({ venueId, tableId, token, children }) {
       updated[index] = { ...updated[index], qty: newQty };
       return updated;
     });
-  }, []);
-
-  const removeFromCart = useCallback((index) => {
-    setCart(current => current.filter((_, i) => i !== index));
-  }, []);
+  }, [removeFromCart]);
 
   const updateNote = useCallback((index, note) => {
     setCart(current => {
@@ -124,6 +183,111 @@ export function CustomerProvider({ venueId, tableId, token, children }) {
 
   const clearCart = useCallback(() => {
     setCart([]);
+  }, []);
+
+  // ─── Sipariş gönderme ──────────────────────────────
+  /**
+   * Sepeti Firestore'a order olarak yazar.
+   * Firestore Rules'a uyumlu:
+   *   venueId, customerUid, status='pending', items, total, sessionId, tableId, createdAt=serverTimestamp
+   *
+   * @param {Object} options
+   * @param {string} [options.customerNote] - Sipariş geneli müşteri notu
+   * @returns { orderId } veya { error }
+   */
+  const submitOrder = useCallback(async ({ customerNote = '' } = {}) => {
+    // Ön kontroller
+    if (!auth.currentUser) {
+      return { error: 'Oturum açılmamış. Lütfen sayfayı yenileyin.' };
+    }
+    if (!session?.sessionId) {
+      return { error: 'Masa oturumu hazır değil. Lütfen sayfayı yenileyin.' };
+    }
+    if (!cart || cart.length === 0) {
+      return { error: 'Sepetiniz boş' };
+    }
+    if (cart.length > 50) {
+      return { error: 'Sepette en fazla 50 çeşit ürün olabilir' };
+    }
+
+    // Her satırın miktarını kontrol et
+    for (const line of cart) {
+      if (!validateQuantity(line.qty)) {
+        return { error: `"${line.name}" için geçersiz miktar` };
+      }
+      if (typeof line.price !== 'number' || line.price < 0 || line.price > 100000) {
+        return { error: `"${line.name}" için geçersiz fiyat` };
+      }
+    }
+
+    // Client-side rate limit (1 dakikada 3 sipariş)
+    const rl = checkClientRateLimit(`order_${venueId}_${tableId}`, {
+      maxAttempts: 3, windowMs: 60_000
+    });
+    if (!rl.allowed) {
+      return { error: `Çok hızlı sipariş veriyorsun. ${rl.retryAfter} sn bekle.` };
+    }
+
+    setSubmittingOrder(true);
+    try {
+      // Items'ı normalize et (rules'a uygun, fazla alan göndermeden)
+      const items = cart.map(line => ({
+        itemId: String(line.itemId),
+        name: sanitizeText(line.name, 120),
+        price: Number(line.price),
+        qty: Number(line.qty),
+        note: sanitizeText(line.note || '', 200),
+        lineTotal: Number((line.price * line.qty).toFixed(2))
+      }));
+
+      const total = Number(
+        items.reduce((sum, i) => sum + i.lineTotal, 0).toFixed(2)
+      );
+
+      if (total <= 0 || total > 50000) {
+        setSubmittingOrder(false);
+        return { error: 'Sipariş tutarı geçersiz' };
+      }
+
+      const orderData = {
+        venueId,
+        customerUid: auth.currentUser.uid,
+        status: 'pending',
+        items,
+        total,
+        sessionId: session.sessionId,
+        tableId,
+        customerNote: sanitizeText(customerNote, 300),
+        createdAt: serverTimestamp()
+      };
+
+      const ref = await addDoc(
+        collection(db, venueCol(venueId, 'orders')),
+        orderData
+      );
+
+      // Başarılı → sepeti temizle, aktif sipariş olarak kaydet
+      setCart([]);
+      setActiveOrderId(ref.id);
+
+      return { orderId: ref.id };
+    } catch (e) {
+      console.error('[SubmitOrder]', e);
+      const msg = e?.code === 'permission-denied'
+        ? 'Yetki hatası. Lütfen sayfayı yenileyip tekrar deneyin.'
+        : (e?.message || 'Sipariş oluşturulamadı');
+      return { error: msg };
+    } finally {
+      setSubmittingOrder(false);
+    }
+  }, [cart, session, venueId, tableId]);
+
+  /**
+   * Aktif sipariş takibini sıfırla (kullanıcı "yeni sipariş" demek istediğinde)
+   */
+  const clearActiveOrder = useCallback(() => {
+    setActiveOrderId(null);
+    setActiveOrder(null);
   }, []);
 
   // Hesaplamalar
@@ -142,6 +306,11 @@ export function CustomerProvider({ venueId, tableId, token, children }) {
     removeFromCart,
     updateNote,
     clearCart,
+    submitOrder,
+    submittingOrder,
+    activeOrder,
+    activeOrderId,
+    clearActiveOrder,
     venueId,
     tableId
   };

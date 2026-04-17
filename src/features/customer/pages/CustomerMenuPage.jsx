@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { UtensilsCrossed, Search, X, ShoppingBag } from 'lucide-react';
+import { UtensilsCrossed, Search, X, Receipt } from 'lucide-react';
 import { db } from '../../../lib/firebase';
 import { venueCol } from '../../../lib/paths';
 import { useVenue } from '../../../contexts/VenueContext';
@@ -8,16 +9,14 @@ import { useCustomer } from '../../../contexts/CustomerContext';
 import { ProductDetailModal } from '../components/ProductDetailModal';
 import { CartBar } from '../components/CartBar';
 import { formatPrice } from '../../../lib/security';
-import { cn } from '../../../lib/utils';
 
 export default function CustomerMenuPage() {
   const { venue, venueId } = useVenue();
-  const { cartCount } = useCustomer();
+  const { cartCount, activeOrder } = useCustomer();
 
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState('all');
   const [search, setSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
 
@@ -56,7 +55,7 @@ export default function CustomerMenuPage() {
 
   // Filtre
   const filteredItems = items.filter((item) => {
-    if (item.available === false) return false; // tükendi olanları gizle
+    if (item.available === false) return false;
     if (search) {
       const s = search.toLowerCase();
       return (
@@ -64,8 +63,7 @@ export default function CustomerMenuPage() {
         (item.description || '').toLowerCase().includes(s)
       );
     }
-    if (activeCategory === 'all') return true;
-    return item.categoryId === activeCategory;
+    return true;
   });
 
   // Kategoriye göre grupla (arama yokken)
@@ -80,6 +78,9 @@ export default function CustomerMenuPage() {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  // Aktif sipariş var ve terminal durumda değilse banner göster
+  const showActiveOrderBanner = activeOrder && !['served', 'cancelled'].includes(activeOrder.status);
 
   if (loading) {
     return (
@@ -161,6 +162,35 @@ export default function CustomerMenuPage() {
           </div>
         )}
       </div>
+
+      {/* Aktif sipariş banner'ı */}
+      {showActiveOrderBanner && (
+        <div className="max-w-2xl mx-auto px-4 pt-3">
+          <Link
+            to="sepet"
+            className="flex items-center gap-3 rounded-2xl p-3 border"
+            style={{
+              backgroundColor: 'rgb(var(--brand-rgb) / 0.08)',
+              borderColor: 'rgb(var(--brand-rgb) / 0.2)'
+            }}
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: 'rgb(var(--brand-rgb))' }}
+            >
+              <Receipt className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm text-slate-900">
+                Aktif siparişiniz var
+              </div>
+              <div className="text-xs text-slate-600">
+                {formatPrice(activeOrder.total)} — Takip etmek için dokun
+              </div>
+            </div>
+          </Link>
+        </div>
+      )}
 
       {/* Karşılama */}
       {!search && venue?.branding?.welcomeText && (
