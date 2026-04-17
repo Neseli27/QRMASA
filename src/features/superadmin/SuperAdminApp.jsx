@@ -1,25 +1,27 @@
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
 import { LoadingScreen } from '../../components/ui/StateScreens';
+import { SuperAdminLayout } from './components/SuperAdminLayout';
+import SuperAdminDashboardPage from './pages/SuperAdminDashboardPage';
+import SuperAdminVenuesPage from './pages/SuperAdminVenuesPage';
+import SuperAdminVenueDetailPage from './pages/SuperAdminVenueDetailPage';
 
-// Süper admin — Faz 2'de: mekan ekle/onayla, feature toggle, abonelik, global raporlar
 export default function SuperAdminApp() {
-  const { loading, isAuthed, hasRole } = useAuth();
+  const { loading, isAuthed, hasRole, profileLoaded } = useAuth();
 
-  if (loading) return <LoadingScreen />;
+  if (loading) return <LoadingScreen theme="dark" />;
   if (!isAuthed) return <Navigate to="/giris" replace />;
+  if (!profileLoaded) return <LoadingScreen theme="dark" message="Profil yükleniyor..." />;
   if (!hasRole('superadmin')) return <Navigate to="/" replace />;
 
   return (
-    <div className="min-h-[100dvh] bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 px-6 py-4">
-        <h1 className="font-display text-xl font-bold">Süper Admin</h1>
-      </header>
-      <main className="p-6">
-        <div className="bg-slate-900 rounded-2xl p-8 text-center border border-slate-800">
-          <p className="text-slate-300">Süper admin paneli Faz 2'de geliştirilecek.</p>
-        </div>
-      </main>
-    </div>
+    <SuperAdminLayout>
+      <Routes>
+        <Route index element={<SuperAdminDashboardPage />} />
+        <Route path="mekanlar" element={<SuperAdminVenuesPage />} />
+        <Route path="mekanlar/:venueId" element={<SuperAdminVenueDetailPage />} />
+        <Route path="*" element={<Navigate to="/superadmin" replace />} />
+      </Routes>
+    </SuperAdminLayout>
   );
 }

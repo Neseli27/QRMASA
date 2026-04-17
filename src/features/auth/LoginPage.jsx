@@ -11,7 +11,7 @@ import { LoadingScreen } from '../../components/ui/StateScreens';
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, profile, loading: authLoading, role } = useAuth();
+  const { user, profile, profileLoaded, loading: authLoading, role } = useAuth();
   const { signInWithEmail, signInWithGoogle, loading, error } = useAuthActions();
 
   const [email, setEmail] = useState('');
@@ -25,8 +25,14 @@ export default function LoginPage() {
     if (authLoading) return;
     if (!user) return;
 
-    // Kullanıcı var ama henüz profile yüklenmedi (rol bilgisi gelmemiş)
-    if (user && !user.isAnonymous && profile === null) return;
+    // Profile Firestore'dan henüz yüklenmedi
+    if (!profileLoaded) return;
+
+    // Süper admin daima kendi paneline gider (from önemli değil)
+    if (role === 'superadmin') {
+      navigate('/superadmin', { replace: true });
+      return;
+    }
 
     // From varsa oraya git
     if (from) {
@@ -36,9 +42,6 @@ export default function LoginPage() {
 
     // Role göre default sayfa
     switch (role) {
-      case 'superadmin':
-        navigate('/superadmin', { replace: true });
-        break;
       case 'venue_admin':
         navigate('/yonetim', { replace: true });
         break;
@@ -46,10 +49,10 @@ export default function LoginPage() {
         navigate('/garson', { replace: true });
         break;
       default:
-        // Rolü yok — belki yeni kayıt, venue panelini dene (yoksa o sayfa logout yapacak)
+        // Rolü yok — yönetim paneline gitsin, orada "rol yok" uyarısı gösterecek
         navigate('/yonetim', { replace: true });
     }
-  }, [user, profile, role, authLoading, from, navigate]);
+  }, [user, profile, profileLoaded, role, authLoading, from, navigate]);
 
   const handleEmailSubmit = async (e) => {
     e.preventDefault();

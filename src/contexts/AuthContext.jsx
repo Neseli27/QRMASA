@@ -19,6 +19,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null); // { role, venueId, displayName, ... }
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,36 +28,65 @@ export function AuthProvider({ children }) {
     const unsubAuth = onAuthStateChanged(auth, (fbUser) => {
       // Önceki profile listener'ı kapat
       if (unsubProfile) {
-        unsubProfile();
+        try { unsubProfile(); } catch (e) { /* sessiz */ }
         unsubProfile = null;
       }
 
       setUser(fbUser);
+      setProfileLoaded(false);
+      setProfile(null);
 
-      if (fbUser && !fbUser.isAnonymous) {
-        // QRMasa rol dokümanını dinle — rol değişikliğinde anında yansısın
-        const ref = doc(db, collections.userRoles, fbUser.uid);
+      // Kullanıcı yok → loading biter
+      if (!fbUser) {
+        setProfileLoaded(true);
+        setLoading(false);
+        return;
+      }
+
+      // Anonim kullanıcı → rol bilgisi yok, hızlıca biter
+      if (fbUser.isAnonymous) {
+        setProfileLoaded(true);
+        setLoading(false);
+        return;
+      }
+
+      // UID validation — boş uid doc() hatası verir
+      if (!fbUser.uid || typeof fbUser.uid !== 'string' || fbUser.uid.length === 0) {
+        console.warn('[Auth] Geçersiz uid:', fbUser);
+        setProfileLoaded(true);
+        setLoading(false);
+        return;
+      }
+
+      // Rol dokümanını dinle
+      try {
+        const ref = doc(db, collections.users, fbUser.uid);
         unsubProfile = onSnapshot(
           ref,
           (snap) => {
             setProfile(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+            setProfileLoaded(true);
             setLoading(false);
           },
           (err) => {
             console.error('[Auth] users okuma hatası:', err);
             setProfile(null);
+            setProfileLoaded(true);
             setLoading(false);
           }
         );
-      } else {
-        setProfile(null);
+      } catch (e) {
+        console.error('[Auth] doc() hata:', e);
+        setProfileLoaded(true);
         setLoading(false);
       }
     });
 
     return () => {
       unsubAuth();
-      if (unsubProfile) unsubProfile();
+      if (unsubProfile) {
+        try { unsubProfile(); } catch (e) { /* sessiz */ }
+      }
     };
   }, []);
 
@@ -73,6 +103,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     profile,
+    profileLoaded,
     loading,
     signOut,
     hasRole,

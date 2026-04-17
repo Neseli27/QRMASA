@@ -4,10 +4,11 @@ import { LoadingScreen } from '../../components/ui/StateScreens';
 
 // Garson paneli — Faz 4'te: canlı sipariş listesi, masa durumu, çağrı
 export default function WaiterApp() {
-  const { loading, isAuthed, hasRole } = useAuth();
+  const { loading, isAuthed, hasRole, profileLoaded } = useAuth();
 
   if (loading) return <LoadingScreen />;
   if (!isAuthed) return <Navigate to="/giris" replace />;
+  if (!profileLoaded) return <LoadingScreen message="Profil yükleniyor..." />;
   if (!hasRole('waiter', 'venue_admin', 'superadmin')) return <Navigate to="/" replace />;
 
   return (

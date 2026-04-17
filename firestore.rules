@@ -47,14 +47,19 @@ service cloud.firestore {
     }
 
     // ─── /users/{uid} ─ Kullanıcı rol profili ─────────
-    // Rol ve venueId alanları istemciden DEĞİŞTİRİLEMEZ.
-    // Cloud Functions (admin SDK) bu alanları yazar.
+    // Rol ve venueId alanları istemciden DEĞİŞTİRİLEMEZ (Cloud Functions yazar).
+    // İSTİSNA: Süper admin kendi venueId'sini değiştirebilir (mekan arasında geçiş).
     match /users/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isSuperAdmin());
       allow create: if false;
       allow update: if isSignedIn() && request.auth.uid == uid
         && !('role' in request.resource.data.diff(resource.data).affectedKeys())
-        && !('venueId' in request.resource.data.diff(resource.data).affectedKeys());
+        && (
+          // Normal kullanıcı: venueId değişemez
+          !('venueId' in request.resource.data.diff(resource.data).affectedKeys())
+          // Süper admin: kendi venueId'sini değiştirebilir (mekan geçişi)
+          || isSuperAdmin()
+        );
       allow delete: if isSuperAdmin();
     }
 

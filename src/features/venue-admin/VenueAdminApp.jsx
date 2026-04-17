@@ -4,6 +4,7 @@ import { VenueProvider } from '../../contexts/VenueContext';
 import { LoadingScreen, ErrorScreen } from '../../components/ui/StateScreens';
 import { VenueAdminLayout } from './components/VenueAdminLayout';
 import DashboardPage from './pages/DashboardPage';
+import MenuPage from './pages/MenuPage';
 import { ComingSoonPage } from './pages/ComingSoonPage';
 
 /**
@@ -15,7 +16,7 @@ import { ComingSoonPage } from './pages/ComingSoonPage';
  */
 export default function VenueAdminApp() {
   const location = useLocation();
-  const { loading, isAuthed, hasRole, venueId, role, profile } = useAuth();
+  const { loading, isAuthed, hasRole, venueId, role, profileLoaded } = useAuth();
 
   if (loading) return <LoadingScreen />;
 
@@ -24,8 +25,15 @@ export default function VenueAdminApp() {
     return <Navigate to="/giris" state={{ from: location }} replace />;
   }
 
+  // Profile henüz yüklenmedi (Firestore'dan cevap bekleniyor)
+  if (!profileLoaded) return <LoadingScreen message="Profil yükleniyor..." />;
+
   // Rol yok veya yanlış rol
-  if (!hasRole('venue_admin', 'superadmin')) {
+  if (!hasRole('venue_admin')) {
+    // Süper admin /yonetim'e giremez, kendi paneline yönlendir
+    if (role === 'superadmin') {
+      return <Navigate to="/superadmin" replace />;
+    }
     return (
       <ErrorScreen
         title="Erişim yetkin yok"
@@ -38,23 +46,12 @@ export default function VenueAdminApp() {
     );
   }
 
-  // Venue admin ise ama venueId yoksa — profil hatası
-  if (role === 'venue_admin' && !venueId) {
+  // Venue admin ise venueId olmalı
+  if (!venueId) {
     return (
       <ErrorScreen
         title="İşletme bilgisi eksik"
         message="Hesabına bir işletme atanmamış. Süper admin ile iletişime geç."
-      />
-    );
-  }
-
-  // Superadmin için venueId seçilmeli (Faz 2'de süper admin mekan seçim arayüzü eklenecek)
-  // Şimdilik sadece venue_admin'e odaklıyoruz
-  if (role === 'superadmin' && !venueId) {
-    return (
-      <ErrorScreen
-        title="Mekan seçilmedi"
-        message="Süper admin olarak bir mekan seçmek için /superadmin paneline git."
       />
     );
   }
@@ -64,22 +61,7 @@ export default function VenueAdminApp() {
       <VenueAdminLayout>
         <Routes>
           <Route index element={<DashboardPage />} />
-          <Route
-            path="menu"
-            element={
-              <ComingSoonPage
-                title="Menü Yönetimi"
-                description="Kategoriler ve ürünler"
-                features={[
-                  'Kategori ekle / sırala / sil',
-                  'Ürün ekle (ad, açıklama, fiyat, resim)',
-                  'Varyant ve opsiyonlar',
-                  'Stok / tükendi durumu',
-                  'Toplu fiyat güncelleme'
-                ]}
-              />
-            }
-          />
+          <Route path="menu" element={<MenuPage />} />
           <Route
             path="masalar"
             element={
