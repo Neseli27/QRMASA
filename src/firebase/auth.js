@@ -1,7 +1,9 @@
 import {
+  GoogleAuthProvider,
   onAuthStateChanged,
   signInAnonymously,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
 } from 'firebase/auth';
 import { auth, firebaseConfigurationError } from './config';
@@ -50,6 +52,15 @@ export async function signInStaff(email, password) {
   }
 
   const credential = await signInWithEmailAndPassword(firebaseAuth, normalizedEmail, password);
+  return credential.user;
+}
+
+export async function signInStaffWithGoogle() {
+  const firebaseAuth = requireAuth();
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+
+  const credential = await signInWithPopup(firebaseAuth, provider);
   return credential.user;
 }
 
