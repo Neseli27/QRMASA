@@ -1,25 +1,59 @@
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import {
+  onAuthStateChanged,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
 import { auth, firebaseConfigurationError } from './config';
 
-export function ensureAnonymousCustomer() {
+function requireAuth() {
   if (firebaseConfigurationError || !auth) {
-    return Promise.reject(new Error(firebaseConfigurationError || 'Firebase Authentication başlatılamadı.'));
+    throw new Error(firebaseConfigurationError || 'Firebase Authentication başlatılamadı.');
+  }
+  return auth;
+}
+
+export function waitForAuthUser() {
+  try {
+    const firebaseAuth = requireAuth();
+    return new Promise((resolve, reject) => {
+      const unsubscribe = onAuthStateChanged(
+        firebaseAuth,
+        (user) => {
+          unsubscribe();
+          resolve(user);
+        },
+        reject,
+      );
+    });
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+export async function ensureAnonymousCustomer() {
+  const firebaseAuth = requireAuth();
+  const currentUser = await waitForAuthUser();
+
+  if (currentUser) return currentUser;
+
+  const credential = await signInAnonymously(firebaseAuth);
+  return credential.user;
+}
+
+export async function signInStaff(email, password) {
+  const firebaseAuth = requireAuth();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+
+  if (!normalizedEmail || !password) {
+    throw new Error('E-posta ve şifre alanlarını doldurun.');
   }
 
-  return new Promise((resolve, reject) => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      unsubscribe();
-      if (user) {
-        resolve(user);
-        return;
-      }
+  const credential = await signInWithEmailAndPassword(firebaseAuth, normalizedEmail, password);
+  return credential.user;
+}
 
-      try {
-        const credential = await signInAnonymously(auth);
-        resolve(credential.user);
-      } catch (error) {
-        reject(error);
-      }
-    }, reject);
-  });
+export async function signOutStaff() {
+  const firebaseAuth = requireAuth();
+  await signOut(firebaseAuth);
 }
