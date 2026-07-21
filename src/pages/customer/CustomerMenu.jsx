@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ensureAnonymousCustomer } from '../../firebase/auth';
 import { getCustomerMenu } from '../../firebase/menu';
+import { submitCustomerOrder } from '../../firebase/orders';
 import {
   addProductToCart,
   changeCartQuantity,
@@ -27,6 +28,11 @@ export default function CustomerMenu() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [cart, setCart] = useState(() => loadCart(slug, table));
   const [cartOpen, setCartOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [customerNote, setCustomerNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [orderResult, setOrderResult] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +74,7 @@ export default function CustomerMenu() {
   const cartCount = useMemo(() => getCartCount(cart), [cart]);
   const cartTotal = useMemo(() => getCartTotal(cart), [cart]);
   const businessName = formatBusinessName(slug, state.data?.business);
+  const tableName = state.data?.table?.ad || state.data?.table?.name || table;
 
   function addToCart(product) {
     setCart((current) => addProductToCart(current, product));
@@ -79,6 +86,41 @@ export default function CustomerMenu() {
 
   function deleteItem(productId) {
     setCart((current) => removeCartItem(current, productId));
+  }
+
+  function openReview() {
+    if (cart.length === 0) return;
+    setSubmitError('');
+    setCartOpen(false);
+    setReviewOpen(true);
+  }
+
+  async function sendOrder() {
+    if (submitting || cart.length === 0) return;
+
+    setSubmitting(true);
+    setSubmitError('');
+
+    try {
+      const session = ensureTableSession(slug, table);
+      const result = await submitCustomerOrder({
+        businessId: slug,
+        tableId: table,
+        tableName,
+        sessionId: session.sessionId,
+        cart,
+        customerNote,
+      });
+
+      setCart([]);
+      setCustomerNote('');
+      setReviewOpen(false);
+      setOrderResult(result);
+    } catch (error) {
+      setSubmitError(error?.message || 'Sipariş gönderilemedi. Lütfen tekrar deneyin.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (state.loading) {
@@ -114,7 +156,7 @@ export default function CustomerMenu() {
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold">{businessName}</h1>
-            <p className="text-xs text-emerald-400">Masa {state.data?.table?.ad || state.data?.table?.name || table}</p>
+            <p className="text-xs text-emerald-400">Masa {tableName}</p>
           </div>
           <button onClick={() => setCartOpen(true)} className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold">
             Sepet {cartCount}
@@ -230,11 +272,84 @@ export default function CustomerMenu() {
                 <span className="text-neutral-300">Toplam</span>
                 <strong className="text-xl text-emerald-400">{formatPrice(cartTotal)} ₺</strong>
               </div>
-              <button disabled={cart.length === 0} className="w-full rounded-xl bg-emerald-600 py-3 font-semibold disabled:bg-neutral-700 disabled:text-neutral-400">
+              <button onClick={openReview} disabled={cart.length === 0} className="w-full rounded-xl bg-emerald-600 py-3 font-semibold disabled:bg-neutral-700 disabled:text-neutral-400">
                 Siparişi gözden geçir
               </button>
-              <p className="text-center text-xs text-neutral-500 mt-3">Siparişi işletmeye gönderme adımı sıradaki geliştirmede eklenecek.</p>
             </footer>
+          </section>
+        </div>
+      )}
+
+      {reviewOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 grid place-items-center p-4" onClick={() => !submitting && setReviewOpen(false)}>
+          <section className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-neutral-900 border border-white/10" onClick={(event) => event.stopPropagation()}>
+            <header className="flex items-center justify-between border-b border-white/10 p-5">
+              <div>
+                <h2 className="text-xl font-bold">Siparişi gözden geçirin</h2>
+                <p className="text-sm text-emerald-400 mt-1">Masa {tableName}</p>
+              </div>
+              <button disabled={submitting} onClick={() => setReviewOpen(false)} className="h-10 w-10 rounded-full bg-neutral-800 text-xl disabled:opacity-50">×</button>
+            </header>
+
+            <div className="p-5 space-y-3">
+              {cart.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-800 p-4">
+                  <div>
+                    <h3 className="font-semibold">{item.quantity} × {item.name}</h3>
+                    <p className="text-xs text-neutral-400 mt-1">Birim fiyat: {formatPrice(item.price)} ₺</p>
+                  </div>
+                  <strong className="text-emerald-400 whitespace-nowrap">{formatPrice(item.price * item.quantity)} ₺</strong>
+                </div>
+              ))}
+
+              <label className="block pt-2">
+                <span className="text-sm font-semibold">Sipariş notu</span>
+                <textarea
+                  value={customerNote}
+                  onChange={(event) => setCustomerNote(event.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="Örneğin: Kahve az şekerli olsun."
+                  className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-neutral-800 p-3 text-sm outline-none focus:border-emerald-500"
+                />
+                <span className="mt-1 block text-right text-xs text-neutral-500">{customerNote.length}/500</span>
+              </label>
+
+              {submitError && (
+                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                  {submitError}
+                </div>
+              )}
+            </div>
+
+            <footer className="border-t border-white/10 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-neutral-300">Genel toplam</span>
+                <strong className="text-2xl text-emerald-400">{formatPrice(cartTotal)} ₺</strong>
+              </div>
+              <button onClick={sendOrder} disabled={submitting} className="w-full rounded-xl bg-emerald-600 py-3 font-semibold disabled:cursor-wait disabled:opacity-60">
+                {submitting ? 'Sipariş gönderiliyor…' : 'Siparişi gönder'}
+              </button>
+              <p className="mt-3 text-center text-xs text-neutral-500">Sipariş önce garson onayına gönderilir.</p>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {orderResult && (
+        <div className="fixed inset-0 z-50 bg-black/80 grid place-items-center p-4">
+          <section className="w-full max-w-md rounded-3xl bg-neutral-900 border border-emerald-500/30 p-7 text-center">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-500/15 text-4xl">✓</div>
+            <h2 className="mt-5 text-2xl font-black">Siparişiniz gönderildi</h2>
+            <p className="mt-2 text-sm text-neutral-300">Garson onayı bekleniyor. Durum değiştiğinde bu ekrandan takip edebileceksiniz.</p>
+            <div className="mt-5 rounded-2xl bg-neutral-800 p-4">
+              <p className="text-xs text-neutral-400">Sipariş numarası</p>
+              <strong className="mt-1 block text-xl tracking-wider">{orderResult.orderNo}</strong>
+              <p className="mt-3 text-sm text-emerald-400">Toplam: {formatPrice(orderResult.total)} ₺</p>
+            </div>
+            <button onClick={() => setOrderResult(null)} className="mt-5 w-full rounded-xl bg-emerald-600 py-3 font-semibold">
+              Menüye dön
+            </button>
           </section>
         </div>
       )}
