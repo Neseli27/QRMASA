@@ -5,6 +5,7 @@ import PanelLogin from './pages/panel/PanelLogin';
 import WaiterPanel from './pages/panel/WaiterPanel';
 import KitchenPanel from './pages/panel/KitchenPanel';
 import ManagerPanel from './pages/panel/ManagerPanel';
+import MenuManagement from './pages/panel/MenuManagement';
 import SuperAdmin from './pages/admin/SuperAdmin';
 import NotFound from './pages/NotFound';
 
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/panel/garson" element={<WaiterPanel />} />
         <Route path="/panel/mutfak" element={<KitchenPanel />} />
         <Route path="/panel/yonetici" element={<ManagerPanel />} />
+        <Route path="/panel/yonetici/menu" element={<MenuManagement />} />
 
         {/* Süperadmin */}
         <Route path="/admin" element={<SuperAdmin />} />
