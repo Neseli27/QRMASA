@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signInStaff, signInStaffWithGoogle, signOutStaff } from '../../firebase/auth';
 import { getStaffAccess } from '../../firebase/staff';
+import { downloadWorkspace, setCurrentBusinessCode } from '../../firebase/workspaceSafe';
 
 function readableAuthError(error) {
   const code = error?.code || '';
@@ -40,6 +41,12 @@ export default function PanelLogin() {
   async function completeStaffLogin(user, normalizedBusinessId) {
     const access = await getStaffAccess(normalizedBusinessId, user);
     localStorage.setItem('qrmasa_staff_business', normalizedBusinessId);
+    setCurrentBusinessCode(normalizedBusinessId);
+
+    if (access.isOwner) {
+      await downloadWorkspace(normalizedBusinessId, user);
+    }
+
     navigate(routeForRole(access.role, normalizedBusinessId), { replace: true });
   }
 
@@ -157,7 +164,7 @@ export default function PanelLogin() {
         )}
 
         <button disabled={Boolean(loadingMethod)} className="mt-6 w-full rounded-2xl bg-emerald-600 py-3.5 font-bold disabled:cursor-wait disabled:opacity-60">
-          {loadingMethod === 'email' ? 'Giriş yapılıyor…' : 'E-posta ve şifreyle giriş yap'}
+          {loadingMethod === 'email' ? 'Kayıtlar yükleniyor…' : 'E-posta ve şifreyle giriş yap'}
         </button>
 
         <button
