@@ -10,6 +10,7 @@ html, body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
+  background: #0a0a0a;
 }
 
 #root {
@@ -23,4 +24,33 @@ button, a {
 /* iOS input zoom önleme */
 input, select, textarea {
   font-size: 16px;
+}
+
+/* Yönetici modülleri kalıcı sidebar içinde açıldığında eski sayfa başlıklarını gizler. */
+.manager-shell-content > div {
+  min-height: auto !important;
+  background: transparent !important;
+}
+
+.manager-shell-content > div > header {
+  display: none !important;
+}
+
+.manager-shell-content > div > main {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 1.25rem !important;
+}
+
+@media (min-width: 640px) {
+  .manager-shell-content > div > main {
+    padding: 1.5rem !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .manager-shell-content > div > main {
+    padding: 2rem !important;
+  }
 }
