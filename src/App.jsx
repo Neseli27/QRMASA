@@ -13,6 +13,7 @@ import SuperAdmin from './pages/admin/SuperAdmin';
 import NotFound from './pages/NotFound';
 import ManagerCloudSyncSafe from './components/ManagerCloudSyncSafe';
 import ManagerGate from './components/ManagerGate';
+import ManagerLayout from './components/ManagerLayout';
 
 function ProtectedManager({ children }) {
   return <ManagerGate>{children}</ManagerGate>;
@@ -29,17 +30,30 @@ export default function App() {
         {/* Müşteri tarafı */}
         <Route path="/m/:slug/:table" element={<CustomerMenu />} />
 
-        {/* Personel paneli */}
+        {/* Bağımsız personel ekranları */}
         <Route path="/panel/giris" element={<PanelLogin />} />
         <Route path="/panel/garson" element={<WaiterPanel />} />
         <Route path="/panel/mutfak" element={<KitchenPanel />} />
 
-        {/* İşletme hesabı ve yönetim */}
+        {/* İşletme hesabı */}
         <Route path="/panel/hesap" element={<ManagerAccountSecure />} />
-        <Route path="/panel/yonetici" element={<ProtectedManager><ManagerPanel /></ProtectedManager>} />
-        <Route path="/panel/yonetici/menu" element={<ProtectedManager><MenuManagement /></ProtectedManager>} />
-        <Route path="/panel/yonetici/personel" element={<ProtectedManager><StaffManagement /></ProtectedManager>} />
-        <Route path="/panel/yonetici/masalar" element={<ProtectedManager><TableManagement /></ProtectedManager>} />
+
+        {/* Kalıcı yönetim paneli */}
+        <Route
+          path="/panel/yonetici"
+          element={(
+            <ProtectedManager>
+              <ManagerLayout />
+            </ProtectedManager>
+          )}
+        >
+          <Route index element={<ManagerPanel />} />
+          <Route path="siparisler" element={<WaiterPanel />} />
+          <Route path="menu" element={<MenuManagement />} />
+          <Route path="personel" element={<StaffManagement />} />
+          <Route path="masalar" element={<TableManagement />} />
+          <Route path="mutfak" element={<KitchenPanel />} />
+        </Route>
 
         {/* Süperadmin */}
         <Route path="/admin" element={<SuperAdmin />} />
