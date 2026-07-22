@@ -1,3 +1,5 @@
+import { notifyDraftChanged } from './draftEvents';
+
 const STAFF_STORAGE_PREFIX = 'qrmasa_staff_draft';
 
 export const PERMISSION_DEFINITIONS = [
@@ -125,9 +127,11 @@ export function saveStaffDraft(businessCode, draft) {
     updatedAt: Date.now(),
   };
   localStorage.setItem(storageKey(businessCode), JSON.stringify(value));
+  notifyDraftChanged(businessCode);
   return value;
 }
 
 export function clearStaffDraft(businessCode) {
   localStorage.removeItem(storageKey(businessCode));
+  notifyDraftChanged(businessCode);
 }
