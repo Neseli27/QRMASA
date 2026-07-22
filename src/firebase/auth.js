@@ -1,10 +1,13 @@
 import {
+  createUserWithEmailAndPassword,
   GoogleAuthProvider,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  updateProfile,
 } from 'firebase/auth';
 import { auth, firebaseConfigurationError } from './config';
 
@@ -13,6 +16,11 @@ function requireAuth() {
     throw new Error(firebaseConfigurationError || 'Firebase Authentication başlatılamadı.');
   }
   return auth;
+}
+
+export function observeAuthState(onUser, onError) {
+  const firebaseAuth = requireAuth();
+  return onAuthStateChanged(firebaseAuth, onUser, onError);
 }
 
 export function waitForAuthUser() {
@@ -43,6 +51,25 @@ export async function ensureAnonymousCustomer() {
   return credential.user;
 }
 
+export async function registerManagerAccount({ email, password, name }) {
+  const firebaseAuth = requireAuth();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const normalizedName = String(name || '').trim();
+
+  if (!normalizedEmail || !password) {
+    throw new Error('E-posta ve şifre alanlarını doldurun.');
+  }
+  if (String(password).length < 6) {
+    throw new Error('Şifre en az 6 karakter olmalıdır.');
+  }
+
+  const credential = await createUserWithEmailAndPassword(firebaseAuth, normalizedEmail, password);
+  if (normalizedName) {
+    await updateProfile(credential.user, { displayName: normalizedName });
+  }
+  return credential.user;
+}
+
 export async function signInStaff(email, password) {
   const firebaseAuth = requireAuth();
   const normalizedEmail = String(email || '').trim().toLowerCase();
@@ -62,6 +89,13 @@ export async function signInStaffWithGoogle() {
 
   const credential = await signInWithPopup(firebaseAuth, provider);
   return credential.user;
+}
+
+export async function sendManagerPasswordReset(email) {
+  const firebaseAuth = requireAuth();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) throw new Error('E-posta adresini yazın.');
+  await sendPasswordResetEmail(firebaseAuth, normalizedEmail);
 }
 
 export async function signOutStaff() {
