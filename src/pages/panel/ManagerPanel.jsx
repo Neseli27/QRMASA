@@ -1,10 +1,14 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   clearManagerSetup,
   createBusinessCode,
   loadManagerSetup,
   saveManagerSetup,
 } from '../../utils/managerDraft';
+import { loadMenuDraft } from '../../utils/menuDraft';
+import { loadStaffDraft } from '../../utils/staffDraft';
+import { loadTableDraft } from '../../utils/tableDraft';
 
 const STEPS = [
   { title: 'Yönetici', subtitle: 'Hesap sahibi bilgileri' },
@@ -51,13 +55,60 @@ function Toggle({ label, description, checked, onChange }) {
 }
 
 function Dashboard({ setup, onEdit, onReset }) {
+  const navigate = useNavigate();
+  const businessCode = setup.business.code;
+  const menu = useMemo(() => loadMenuDraft(businessCode), [businessCode]);
+  const staff = useMemo(() => loadStaffDraft(businessCode, setup.owner), [businessCode, setup.owner]);
+  const tables = useMemo(() => loadTableDraft(businessCode, setup.operation.tableCount), [businessCode, setup.operation.tableCount]);
   const enabledModules = Object.values(setup.modules).filter(Boolean).length;
+
   const cards = [
-    { icon: '🍽️', label: 'Menü yönetimi', value: '0 ürün', note: 'Sıradaki aşama' },
-    { icon: '👥', label: 'Personel', value: '1 yönetici', note: 'Yetkiler daha sonra' },
-    { icon: '▦', label: 'Masalar', value: `${setup.operation.tableCount} masa`, note: 'QR üretimine hazır' },
-    { icon: '⚙️', label: 'Aktif modüller', value: `${enabledModules} özellik`, note: 'Kurulum tercihi' },
+    {
+      icon: '🍽️',
+      label: 'Menü yönetimi',
+      value: `${menu.products.length} ürün`,
+      note: menu.products.length ? `${menu.categories.length} kategori hazır` : 'Kategori ve ürün ekleyin',
+      path: '/panel/yonetici/menu',
+      action: 'Menüyü aç',
+    },
+    {
+      icon: '👥',
+      label: 'Personel',
+      value: `${staff.members.length} kişi`,
+      note: `${staff.members.filter((member) => member.active).length} aktif hesap`,
+      path: '/panel/yonetici/personel',
+      action: 'Personeli aç',
+    },
+    {
+      icon: '▦',
+      label: 'Masalar',
+      value: `${tables.tables.length} masa`,
+      note: `${tables.tables.filter((table) => table.active).length} QR aktif`,
+      path: '/panel/yonetici/masalar',
+      action: 'Masaları aç',
+    },
+    {
+      icon: '⚙️',
+      label: 'İşletme ayarları',
+      value: `${enabledModules} özellik`,
+      note: 'Çalışma düzeni ve modüller',
+      onClick: onEdit,
+      action: 'Ayarları aç',
+    },
   ];
+
+  const completedSections = [
+    true,
+    menu.categories.length > 0 && menu.products.length > 0,
+    staff.members.length > 1,
+    tables.tables.length > 0,
+  ];
+  const progress = Math.round((completedSections.filter(Boolean).length / completedSections.length) * 100);
+
+  function openCard(card) {
+    if (card.path) navigate(card.path);
+    else card.onClick?.();
+  }
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
@@ -68,20 +119,25 @@ function Dashboard({ setup, onEdit, onReset }) {
             <h1 className="mt-1 text-2xl font-black">{setup.business.name}</h1>
             <p className="mt-1 text-sm text-neutral-400">İşletme kodu: {setup.business.code}</p>
           </div>
-          <button onClick={onEdit} className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-neutral-900">
-            Kurulumu düzenle
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button onClick={() => navigate('/panel/hesap')} className="rounded-xl bg-neutral-800 px-4 py-2 text-sm font-bold text-white">
+              Hesabım
+            </button>
+            <button onClick={onEdit} className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-neutral-900">
+              Kurulumu düzenle
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl p-4 py-7">
-        <section className="mb-6 rounded-3xl border border-amber-400/20 bg-amber-400/10 p-5">
+        <section className="mb-6 rounded-3xl border border-emerald-400/20 bg-emerald-400/10 p-5">
           <div className="flex items-start gap-3">
-            <span className="text-2xl">🧪</span>
+            <span className="text-2xl">☁️</span>
             <div>
-              <h2 className="font-bold text-amber-200">Geliştirme önizlemesi</h2>
-              <p className="mt-1 text-sm leading-6 text-amber-100/75">
-                Bu işletme kurulumu şimdilik yalnızca bu tarayıcıda taslak olarak saklanıyor. Firebase kaydı, gerçek kullanıcı hesabı ve yetkiler uygulamanın bütün modülleri tamamlandıktan sonra bağlanacak.
+              <h2 className="font-bold text-emerald-200">İşletme hesabı bağlı</h2>
+              <p className="mt-1 text-sm leading-6 text-emerald-100/75">
+                İşletme, menü, personel ve masa değişiklikleri Firebase hesabınıza kaydedilir. Aşağıdaki kartlara tıklayarak ilgili yönetim bölümünü açabilirsiniz.
               </p>
             </div>
           </div>
@@ -89,12 +145,21 @@ function Dashboard({ setup, onEdit, onReset }) {
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {cards.map((card) => (
-            <article key={card.label} className="rounded-3xl border border-white/10 bg-neutral-900 p-5">
-              <div className="text-3xl">{card.icon}</div>
+            <button
+              key={card.label}
+              type="button"
+              onClick={() => openCard(card)}
+              className="group rounded-3xl border border-white/10 bg-neutral-900 p-5 text-left transition hover:-translate-y-1 hover:border-emerald-400/40 hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-3xl">{card.icon}</div>
+                <span className="text-xl text-neutral-600 transition group-hover:translate-x-1 group-hover:text-emerald-400">→</span>
+              </div>
               <p className="mt-4 text-sm text-neutral-400">{card.label}</p>
               <strong className="mt-1 block text-2xl">{card.value}</strong>
               <p className="mt-2 text-xs text-emerald-400">{card.note}</p>
-            </article>
+              <span className="mt-5 inline-flex rounded-xl bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-300">{card.action}</span>
+            </button>
           ))}
         </section>
 
@@ -103,26 +168,26 @@ function Dashboard({ setup, onEdit, onReset }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Kurulum durumu</p>
-                <h2 className="mt-1 text-xl font-black">Temel işletme profili hazır</h2>
+                <h2 className="mt-1 text-xl font-black">İşletme yönetim altyapısı</h2>
               </div>
-              <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-300">%25</span>
+              <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-300">%{progress}</span>
             </div>
 
             <div className="mt-5 h-2 overflow-hidden rounded-full bg-neutral-800">
-              <div className="h-full w-1/4 rounded-full bg-emerald-500" />
+              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
             </div>
 
             <div className="mt-6 space-y-3">
               {[
-                ['İşletme ve yönetici bilgileri', true],
-                ['Kategori ve ürün yönetimi', false],
-                ['Personel ve görev yetkileri', false],
-                ['Masa ve QR kod yönetimi', false],
-              ].map(([label, done]) => (
-                <div key={label} className="flex items-center justify-between rounded-2xl bg-neutral-800 p-4">
+                ['İşletme ve yönetici bilgileri', completedSections[0], onEdit],
+                ['Kategori ve ürün yönetimi', completedSections[1], () => navigate('/panel/yonetici/menu')],
+                ['Personel ve görev yetkileri', completedSections[2], () => navigate('/panel/yonetici/personel')],
+                ['Masa ve QR kod yönetimi', completedSections[3], () => navigate('/panel/yonetici/masalar')],
+              ].map(([label, done, action]) => (
+                <button key={label} type="button" onClick={action} className="flex w-full items-center justify-between rounded-2xl bg-neutral-800 p-4 text-left transition hover:bg-neutral-700">
                   <span className="text-sm">{label}</span>
-                  <span className={`text-sm font-bold ${done ? 'text-emerald-400' : 'text-neutral-500'}`}>{done ? 'Tamam' : 'Bekliyor'}</span>
-                </div>
+                  <span className={`text-sm font-bold ${done ? 'text-emerald-400' : 'text-amber-300'}`}>{done ? 'Tamam' : 'Aç'}</span>
+                </button>
               ))}
             </div>
           </article>
@@ -150,7 +215,7 @@ function Dashboard({ setup, onEdit, onReset }) {
             </dl>
 
             <button onClick={onReset} className="mt-7 w-full rounded-xl border border-red-400/20 bg-red-400/10 py-3 text-sm font-semibold text-red-200">
-              Taslağı sıfırla
+              Yerel taslağı sıfırla
             </button>
           </article>
         </section>
@@ -232,7 +297,7 @@ export default function ManagerPanel() {
   }
 
   function resetDraft() {
-    const confirmed = window.confirm('Bu tarayıcıdaki işletme kurulum taslağı silinsin mi?');
+    const confirmed = window.confirm('Bu tarayıcıdaki işletme kurulum taslağı silinsin mi? Buluttaki işletme kaydı silinmez.');
     if (!confirmed) return;
     clearManagerSetup();
     window.location.reload();
@@ -261,7 +326,7 @@ export default function ManagerPanel() {
           <div className="mt-2 flex items-end justify-between gap-4">
             <div>
               <h1 className="text-2xl font-black">İşletmenizi hazırlayın</h1>
-              <p className="mt-1 text-sm text-neutral-400">Kayıt ve yetkilendirme olmadan yönetim ekranlarını tasarlıyoruz.</p>
+              <p className="mt-1 text-sm text-neutral-400">İşletme bilgileri Firebase hesabınıza kaydedilir.</p>
             </div>
             <span className="text-sm font-bold text-neutral-300">{step + 1}/{STEPS.length}</span>
           </div>
@@ -306,7 +371,7 @@ export default function ManagerPanel() {
                   <input className={inputClass} value={setup.owner.phone} onChange={(event) => updateSection('owner', 'phone', event.target.value)} placeholder="05xx xxx xx xx" />
                 </Field>
                 <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/10 p-4 text-sm leading-6 text-emerald-100/75">
-                  Bu bilgiler henüz kullanıcı hesabı oluşturmaz. Uygulama tamamlandığında gerçek kimlik doğrulama sistemine bağlanacaktır.
+                  Yönetici hesabı Firebase Authentication ile korunur. E-posta adresi kullanıcı adınız olarak kullanılır.
                 </div>
               </div>
             )}
