@@ -1,3 +1,5 @@
+import { notifyDraftChanged } from './draftEvents';
+
 const MENU_STORAGE_PREFIX = 'qrmasa_menu_draft';
 
 function storageKey(businessCode) {
@@ -42,9 +44,11 @@ export function saveMenuDraft(businessCode, menu) {
     updatedAt: Date.now(),
   };
   localStorage.setItem(storageKey(businessCode), JSON.stringify(value));
+  notifyDraftChanged(businessCode);
   return value;
 }
 
 export function clearMenuDraft(businessCode) {
   localStorage.removeItem(storageKey(businessCode));
+  notifyDraftChanged(businessCode);
 }
