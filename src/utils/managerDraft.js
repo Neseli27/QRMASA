@@ -1,3 +1,5 @@
+import { notifyDraftChanged } from './draftEvents';
+
 const STORAGE_KEY = 'qrmasa_manager_setup_draft';
 
 export const defaultManagerSetup = {
@@ -59,11 +61,14 @@ export function saveManagerSetup(setup) {
     updatedAt: Date.now(),
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+  if (value.completed && value.business?.code) notifyDraftChanged(value.business.code);
   return value;
 }
 
 export function clearManagerSetup() {
+  const existing = loadManagerSetup();
   localStorage.removeItem(STORAGE_KEY);
+  if (existing.business?.code) notifyDraftChanged(existing.business.code);
 }
 
 export function createBusinessCode(name) {
