@@ -110,6 +110,8 @@ export async function uploadWorkspace(user = auth?.currentUser, requestedCode = 
     ad: setup.business.name,
     name: setup.business.name,
     type: setup.business.type,
+    status: existing?.status || 'deneme',
+    plan: existing?.plan || { denemeMi: true, kod: 'deneme' },
     aktif: true,
     active: true,
     ownerUid: owner.uid,
