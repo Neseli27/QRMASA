@@ -4,16 +4,24 @@ import CustomerMenu from './pages/customer/CustomerMenu';
 import PanelLogin from './pages/panel/PanelLogin';
 import WaiterPanel from './pages/panel/WaiterPanel';
 import KitchenPanel from './pages/panel/KitchenPanel';
+import ManagerAccount from './pages/panel/ManagerAccount';
 import ManagerPanel from './pages/panel/ManagerPanel';
 import MenuManagement from './pages/panel/MenuManagement';
 import StaffManagement from './pages/panel/StaffManagement';
 import TableManagement from './pages/panel/TableManagement';
 import SuperAdmin from './pages/admin/SuperAdmin';
 import NotFound from './pages/NotFound';
+import ManagerCloudSync from './components/ManagerCloudSync';
+import ManagerGate from './components/ManagerGate';
+
+function ProtectedManager({ children }) {
+  return <ManagerGate>{children}</ManagerGate>;
+}
 
 export default function App() {
   return (
     <BrowserRouter>
+      <ManagerCloudSync />
       <Routes>
         {/* Ana sayfa */}
         <Route path="/" element={<Landing />} />
@@ -25,10 +33,13 @@ export default function App() {
         <Route path="/panel/giris" element={<PanelLogin />} />
         <Route path="/panel/garson" element={<WaiterPanel />} />
         <Route path="/panel/mutfak" element={<KitchenPanel />} />
-        <Route path="/panel/yonetici" element={<ManagerPanel />} />
-        <Route path="/panel/yonetici/menu" element={<MenuManagement />} />
-        <Route path="/panel/yonetici/personel" element={<StaffManagement />} />
-        <Route path="/panel/yonetici/masalar" element={<TableManagement />} />
+
+        {/* İşletme hesabı ve yönetim */}
+        <Route path="/panel/hesap" element={<ManagerAccount />} />
+        <Route path="/panel/yonetici" element={<ProtectedManager><ManagerPanel /></ProtectedManager>} />
+        <Route path="/panel/yonetici/menu" element={<ProtectedManager><MenuManagement /></ProtectedManager>} />
+        <Route path="/panel/yonetici/personel" element={<ProtectedManager><StaffManagement /></ProtectedManager>} />
+        <Route path="/panel/yonetici/masalar" element={<ProtectedManager><TableManagement /></ProtectedManager>} />
 
         {/* Süperadmin */}
         <Route path="/admin" element={<SuperAdmin />} />
