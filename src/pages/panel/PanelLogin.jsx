@@ -9,6 +9,9 @@ function readableAuthError(error) {
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
     return 'E-posta veya şifre hatalı.';
   }
+  if (code.includes('permission-denied')) {
+    return 'Bu hesap işletme kaydını okumaya yetkili değil. İşletme sahibiyseniz önce işletme hesabı ekranından kayıtları hesabınıza bağlayın.';
+  }
   if (code.includes('popup-closed-by-user')) return 'Google giriş penceresi tamamlanmadan kapatıldı.';
   if (code.includes('popup-blocked')) return 'Tarayıcı Google giriş penceresini engelledi. Açılır pencerelere izin verin.';
   if (code.includes('unauthorized-domain')) return 'Bu internet adresi Firebase Authentication için yetkilendirilmemiş.';
@@ -17,6 +20,13 @@ function readableAuthError(error) {
   }
   if (code.includes('too-many-requests')) return 'Çok fazla deneme yapıldı. Bir süre sonra tekrar deneyin.';
   return error?.message || 'Giriş yapılamadı.';
+}
+
+function routeForRole(role, businessId) {
+  const query = `?business=${encodeURIComponent(businessId)}`;
+  if (role === 'owner' || role === 'manager') return '/panel/yonetici';
+  if (role === 'kitchen') return `/panel/mutfak${query}`;
+  return `/panel/garson${query}`;
 }
 
 export default function PanelLogin() {
@@ -28,9 +38,9 @@ export default function PanelLogin() {
   const [error, setError] = useState('');
 
   async function completeStaffLogin(user, normalizedBusinessId) {
-    await getStaffAccess(normalizedBusinessId, user);
+    const access = await getStaffAccess(normalizedBusinessId, user);
     localStorage.setItem('qrmasa_staff_business', normalizedBusinessId);
-    navigate(`/panel/garson?business=${encodeURIComponent(normalizedBusinessId)}`, { replace: true });
+    navigate(routeForRole(access.role, normalizedBusinessId), { replace: true });
   }
 
   async function handleEmailSubmit(event) {
@@ -38,6 +48,11 @@ export default function PanelLogin() {
     if (loadingMethod) return;
 
     const normalizedBusinessId = businessId.trim();
+    if (!normalizedBusinessId) {
+      setError('Önce işletme kodunu girin.');
+      return;
+    }
+
     setLoadingMethod('email');
     setError('');
 
@@ -89,7 +104,7 @@ export default function PanelLogin() {
           <input
             value={businessId}
             onChange={(event) => setBusinessId(event.target.value)}
-            placeholder="Örneğin: antep-evi-p7th"
+            placeholder="Örneğin: murat-kafe"
             autoCapitalize="none"
             autoCorrect="off"
             required
@@ -143,6 +158,14 @@ export default function PanelLogin() {
 
         <button disabled={Boolean(loadingMethod)} className="mt-6 w-full rounded-2xl bg-emerald-600 py-3.5 font-bold disabled:cursor-wait disabled:opacity-60">
           {loadingMethod === 'email' ? 'Giriş yapılıyor…' : 'E-posta ve şifreyle giriş yap'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/panel/hesap')}
+          className="mt-3 w-full rounded-2xl border border-white/10 bg-neutral-800 py-3 text-sm font-semibold text-neutral-300"
+        >
+          İşletme sahibi hesabı
         </button>
       </form>
     </div>
