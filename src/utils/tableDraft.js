@@ -1,3 +1,5 @@
+import { notifyDraftChanged } from './draftEvents';
+
 const TABLE_STORAGE_PREFIX = 'qrmasa_table_draft';
 
 export const TABLE_STATUSES = [
@@ -98,9 +100,11 @@ export function saveTableDraft(businessCode, draft) {
     updatedAt: Date.now(),
   };
   localStorage.setItem(storageKey(businessCode), JSON.stringify(value));
+  notifyDraftChanged(businessCode);
   return value;
 }
 
 export function clearTableDraft(businessCode) {
   localStorage.removeItem(storageKey(businessCode));
+  notifyDraftChanged(businessCode);
 }
