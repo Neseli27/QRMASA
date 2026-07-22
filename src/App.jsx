@@ -4,14 +4,14 @@ import CustomerMenu from './pages/customer/CustomerMenu';
 import PanelLogin from './pages/panel/PanelLogin';
 import WaiterPanel from './pages/panel/WaiterPanel';
 import KitchenPanel from './pages/panel/KitchenPanel';
-import ManagerAccount from './pages/panel/ManagerAccount';
+import ManagerAccountSecure from './pages/panel/ManagerAccountSecure';
 import ManagerPanel from './pages/panel/ManagerPanel';
 import MenuManagement from './pages/panel/MenuManagement';
 import StaffManagement from './pages/panel/StaffManagement';
 import TableManagement from './pages/panel/TableManagement';
 import SuperAdmin from './pages/admin/SuperAdmin';
 import NotFound from './pages/NotFound';
-import ManagerCloudSync from './components/ManagerCloudSync';
+import ManagerCloudSyncSafe from './components/ManagerCloudSyncSafe';
 import ManagerGate from './components/ManagerGate';
 
 function ProtectedManager({ children }) {
@@ -21,7 +21,7 @@ function ProtectedManager({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <ManagerCloudSync />
+      <ManagerCloudSyncSafe />
       <Routes>
         {/* Ana sayfa */}
         <Route path="/" element={<Landing />} />
@@ -35,7 +35,7 @@ export default function App() {
         <Route path="/panel/mutfak" element={<KitchenPanel />} />
 
         {/* İşletme hesabı ve yönetim */}
-        <Route path="/panel/hesap" element={<ManagerAccount />} />
+        <Route path="/panel/hesap" element={<ManagerAccountSecure />} />
         <Route path="/panel/yonetici" element={<ProtectedManager><ManagerPanel /></ProtectedManager>} />
         <Route path="/panel/yonetici/menu" element={<ProtectedManager><MenuManagement /></ProtectedManager>} />
         <Route path="/panel/yonetici/personel" element={<ProtectedManager><StaffManagement /></ProtectedManager>} />
