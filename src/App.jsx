@@ -7,6 +7,7 @@ import KitchenPanel from './pages/panel/KitchenPanel';
 import ManagerPanel from './pages/panel/ManagerPanel';
 import MenuManagement from './pages/panel/MenuManagement';
 import StaffManagement from './pages/panel/StaffManagement';
+import TableManagement from './pages/panel/TableManagement';
 import SuperAdmin from './pages/admin/SuperAdmin';
 import NotFound from './pages/NotFound';
 
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="/panel/yonetici" element={<ManagerPanel />} />
         <Route path="/panel/yonetici/menu" element={<MenuManagement />} />
         <Route path="/panel/yonetici/personel" element={<StaffManagement />} />
+        <Route path="/panel/yonetici/masalar" element={<TableManagement />} />
 
         {/* Süperadmin */}
         <Route path="/admin" element={<SuperAdmin />} />
